@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import os from 'os';
 import { Subject, Deadline, UserAccount } from '@/types';
 
 interface DatabaseSchema {
@@ -8,12 +9,30 @@ interface DatabaseSchema {
   users: UserAccount[];
 }
 
-const DB_PATH = path.join(process.cwd(), 'data', 'db.json');
+const ORIGINAL_DB_PATH = path.join(process.cwd(), 'data', 'db.json');
+const TMP_DB_PATH = path.join(os.tmpdir(), 'class_deadline_hub_db.json');
+
+// Bộ nhớ đệm in-memory giúp hỗ trợ Vercel Serverless Function
+let memoryCache: DatabaseSchema | null = null;
 
 async function readDatabase(): Promise<DatabaseSchema> {
+  if (memoryCache) {
+    return memoryCache;
+  }
+
+  // Thử đọc từ /tmp nếu đã từng được ghi trên Serverless
   try {
-    const rawData = await fs.readFile(DB_PATH, 'utf-8');
-    return JSON.parse(rawData) as DatabaseSchema;
+    const tmpData = await fs.readFile(TMP_DB_PATH, 'utf-8');
+    memoryCache = JSON.parse(tmpData) as DatabaseSchema;
+    return memoryCache;
+  } catch {
+    // Chưa có file trong /tmp, chuyển sang đọc file gốc data/db.json
+  }
+
+  try {
+    const rawData = await fs.readFile(ORIGINAL_DB_PATH, 'utf-8');
+    memoryCache = JSON.parse(rawData) as DatabaseSchema;
+    return memoryCache;
   } catch (error) {
     console.error('Error reading db.json:', error);
     throw new Error('Không thể đọc cơ sở dữ liệu JSON.');
@@ -21,11 +40,19 @@ async function readDatabase(): Promise<DatabaseSchema> {
 }
 
 async function writeDatabase(data: DatabaseSchema): Promise<void> {
+  memoryCache = data;
+
+  // 1. Thử ghi vào đường dẫn gốc (hoạt động hoàn hảo ở Local & VPS)
   try {
-    await fs.writeFile(DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
-  } catch (error) {
-    console.error('Error writing to db.json:', error);
-    throw new Error('Không thể ghi vào cơ sở dữ liệu JSON.');
+    await fs.writeFile(ORIGINAL_DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
+    return;
+  } catch (localWriteErr) {
+    // 2. Nếu ở Vercel Serverless (Read-only file system EROFS), ghi sang thư mục /tmp
+    try {
+      await fs.writeFile(TMP_DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
+    } catch (tmpErr) {
+      console.warn('Vercel Serverless filesystem warning (kept in-memory):', tmpErr);
+    }
   }
 }
 
@@ -79,7 +106,6 @@ export async function createDeadline(
 ): Promise<Deadline> {
   const db = await readDatabase();
   
-  // Tạo ID tự tăng hoặc số nguyên tiếp theo
   const maxId = db.deadlines.reduce((max, d) => {
     const num = parseInt(d.id, 10);
     return isNaN(num) ? max : Math.max(max, num);

@@ -44,8 +44,8 @@ export default function LoginForm() {
         setErrorMsg(res?.error || 'Đăng nhập không thành công. Vui lòng thử lại.');
         setIsLoading(false);
       } else {
-        router.push(callbackUrl);
-        router.refresh();
+        // Dùng window.location.href để refresh session cookie đầy đủ tới server & middleware
+        window.location.href = callbackUrl;
       }
     } catch (error) {
       setErrorMsg('Đã có lỗi xảy ra trong quá trình đăng nhập.');

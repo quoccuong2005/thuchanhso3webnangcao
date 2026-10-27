@@ -2,13 +2,26 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { Role } from '@/lib/rbac';
+import { AUTH_SECRET } from '@/lib/constants';
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  
+
+  // Hỗ trợ tự động nhận diện cookie trên cả Localhost (HTTP) và Vercel (HTTPS)
+  const isSecure =
+    request.nextUrl.protocol === 'https:' ||
+    request.headers.get('x-forwarded-proto') === 'https';
+
+  const hasSecureCookie = request.cookies.has('__Secure-next-auth.session-token');
+  const cookieName = hasSecureCookie
+    ? '__Secure-next-auth.session-token'
+    : 'next-auth.session-token';
+
   const token = await getToken({
     req: request,
-    secret: process.env.NEXTAUTH_SECRET || 'class-deadline-hub-ptit-secret-2026',
+    secret: AUTH_SECRET,
+    cookieName,
+    secureCookie: hasSecureCookie || isSecure,
   });
 
   const isAuthenticated = !!token;

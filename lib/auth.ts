@@ -3,6 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import GithubProvider from 'next-auth/providers/github';
 import { getUserByEmail } from '@/lib/db';
 import { Role } from '@/lib/rbac';
+import { AUTH_SECRET } from '@/lib/constants';
 
 export const authOptions: NextAuthOptions = {
   session: {
@@ -53,7 +54,7 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
         token.role = (user as { role: Role }).role || 'user';
@@ -72,5 +73,5 @@ export const authOptions: NextAuthOptions = {
     signIn: '/login',
     error: '/login',
   },
-  secret: process.env.NEXTAUTH_SECRET || 'class-deadline-hub-ptit-secret-2026',
+  secret: AUTH_SECRET,
 };
